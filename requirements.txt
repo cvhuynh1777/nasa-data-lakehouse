@@ -6,3 +6,8 @@ python-dotenv
 seaborn
 matplotlib
 jupyter
+fastapi
+uvicorn
+anthropic
+sentence-transformers
+chromadb

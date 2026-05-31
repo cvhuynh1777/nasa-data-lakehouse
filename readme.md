@@ -170,18 +170,28 @@ python ingestion/neo/extract.py
 python ingestion/neo/transform.py
 python gold/neo/enrich.py
 ```
+**5. Run the API**
 
+```bash
+python -m uvicorn api.main:app --reload
+```
 ---
 
-## Requirements
+## API
 
+Run the API:
+
+```bash
+python -m uvicorn api.main:app --reload
 ```
-requests
-pandas
-pyarrow
-duckdb
-python-dotenv
-seaborn
-matplotlib
-jupyter
-```
+
+Interactive docs available at `http://localhost:8000/docs`
+
+| Endpoint | Description |
+|---|---|
+| `GET /` | Health check |
+| `GET /datasets` | Available datasets and stats |
+| `GET /query` | Query NEO gold data with optional filters |
+| `GET /hazardous` | Highest risk asteroid passes |
+| `GET /sentry` | Objects on NASA's Sentry impact watch list |
+| `GET /rag?question=...` | Natural language text-to-SQL powered by Claude |

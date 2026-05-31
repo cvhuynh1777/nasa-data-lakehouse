@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 import duckdb
 from pathlib import Path
+from nl_query.service import ask
 
 app = FastAPI(
     title="NASA Data Lakehouse",
@@ -10,10 +11,14 @@ app = FastAPI(
 
 GOLD_PATH = str(Path("storage/gold/neo") / "neo_*.parquet")
 
-
 @app.get("/")
 def root():
     return {"message": "NASA Data Lakehouse API", "version": "0.1.0"}
+
+@app.get("/nl-query")
+def nl_query(question: str):
+    """Ask a natural language question — Claude generates SQL and queries the lakehouse."""
+    return ask(question)
 
 
 @app.get("/datasets")
