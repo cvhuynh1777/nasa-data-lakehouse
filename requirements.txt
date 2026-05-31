@@ -3,3 +3,6 @@ pandas
 pyarrow
 duckdb
 python-dotenv
+seaborn
+matplotlib
+jupyter

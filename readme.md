@@ -30,20 +30,28 @@ Pulls live NASA data, cleans and enriches it through a medallion storage archite
 ```
 nasa-data-lakehouse/
 ├── ingestion/
-│   ├── nasa_api.py       # pulls raw data from NASA APIs → bronze
-│   └── transform.py      # cleans bronze data → silver
+│   ├── neo/
+│   │   ├── extract.py        # pulls raw NEO data from NASA API → bronze
+│   │   └── transform.py      # unpacks raw JSON, fixes types → silver
+│   └── shared/               # coming: shared utilities
+├── gold/
+│   └── neo/
+│       └── enrich.py         # risk scoring, size classification → gold
 ├── storage/
-│   ├── bronze/           # raw data exactly as received (gitignored)
-│   ├── silver/           # cleaned, typed, derived columns (gitignored)
-│   └── gold/             # enriched, business logic applied (gitignored)
+│   ├── bronze/neo/           # raw JSON exactly as received (gitignored)
+│   ├── silver/neo/           # cleaned, typed, derived columns (gitignored)
+│   └── gold/neo/             # enriched, business logic applied (gitignored)
 ├── query/
-│   └── duckdb_engine.py  # SQL queries directly on Parquet files
-├── embeddings/           # coming: text → vectors pipeline
-├── rag/                  # coming: retrieval + LLM answer service
-├── api/                  # coming: FastAPI REST layer
-├── docker/               # coming: Dockerfile + docker-compose.yml
-├── notebooks/            # exploration and learning
-├── .env.example          # API key template (copy to .env, never commit .env)
+│   └── duckdb_engine.py      # SQL queries directly on Parquet files
+├── embeddings/               # coming: text → vectors pipeline
+├── rag/                      # coming: retrieval + LLM answer service
+├── api/                      # coming: FastAPI REST layer
+├── docker/                   # coming: Dockerfile + docker-compose.yml
+├── notebooks/
+│   └── neo/
+│       ├── 01_neo_discovery.ipynb   # API exploration, data structure
+│       └── 02_neo_enrich.ipynb      # EDA, gold layer design
+├── .env.example              # API key template (copy to .env, never commit)
 └── requirements.txt
 ```
 
@@ -59,7 +67,6 @@ Silver  →  cleaned types, renamed columns, simple derived fields
 Gold    →  enriched with business logic, scoring, cross-dataset context
 ```
 
-**Why three layers?**
 - Bronze is your safety net — if a transform breaks, the raw data is always there
 - Silver is what most queries run against — clean and trustworthy
 - Gold is what the API and RAG service expose — ready for decisions
@@ -68,37 +75,48 @@ Gold    →  enriched with business logic, scoring, cross-dataset context
 
 ## Datasets
 
-### NEO — Near Earth Objects (`ingestion/nasa_api.py`)
+### NEO — Near Earth Objects
 
-Pulls asteroid close-approach data from NASA's NeoWs API.
+Pulls asteroid close-approach data from NASA's NeoWs API. 5 years of data (2021-2026), 10,133 close approaches.
 
-**Bronze fields (raw):**
+**Bronze** (`ingestion/neo/extract.py`) — raw storage:
+
 | Field | Type | Description |
 |---|---|---|
+| hash_id | string | stable unique ID, hashed from natural keys |
 | id | string | NASA catalog ID |
 | name | string | asteroid designation e.g. `374038 (2004 HW)` |
 | date | string | observation date |
-| is_potentially_hazardous | bool | NASA hazard flag |
-| estimated_diameter_km_min | float | minimum diameter estimate |
-| estimated_diameter_km_max | float | maximum diameter estimate |
-| close_approach_date | string | date of closest approach |
-| relative_velocity_km_per_s | float | speed relative to Earth |
-| miss_distance_km | float | closest distance to Earth in km |
-| orbiting_body | string | which body it orbits (usually Earth) |
+| raw | string | full JSON object exactly as NASA returned it |
 
-**Silver additions (`ingestion/transform.py`):**
+**Silver** (`ingestion/neo/transform.py`) — cleaned and typed:
+
 | Field | Type | Description |
 |---|---|---|
-| estimated_diameter_km_avg | float | average of min/max diameter |
-| miss_distance_lunar | float | miss distance in lunar distances (1 LD = 384,400 km) |
+| absolute_magnitude_h | float | intrinsic brightness, relates to size |
+| diameter_km_min/max/avg | float | estimated diameter in km |
+| is_potentially_hazardous | bool | NASA hazard flag (size + orbit based) |
+| is_sentry_object | bool | on NASA's active impact watch list |
+| velocity_km_per_s | float | speed relative to Earth |
+| miss_distance_lunar | float | closest distance in lunar distances |
+| miss_distance_au | float | closest distance in astronomical units |
+| close_approach_datetime | datetime | exact date and time of closest approach |
+| nasa_jpl_url | string | link to NASA's full database entry |
 
-**Why lunar distances?** More intuitive than km for space scales. The Moon is 1 LD away. A pass at 44 LD is much easier to reason about than 1.7 × 10⁷ km.
+**Gold** (`gold/neo/enrich.py`) — enriched:
 
-**Gold (planned):**
-- `risk_score` — composite score from distance, velocity, size
-- `size_classification` — small / medium / large / major
-- `miss_distance_percentile` — how close relative to historical passes
-- `is_named` — has a proper name vs just a catalog designation
+| Field | Type | Description |
+|---|---|---|
+| hazard_score | float | composite risk score 0-1 (proximity 40%, velocity 30%, size 30%) |
+| hazard_label | string | low / moderate / high / critical |
+| size_class | string | tiny / small / medium / large / major |
+| is_named | bool | has a proper name vs just a catalog designation |
+| critical_alert | bool | True when both hazardous AND sentry (rare) |
+| miss_distance_percentile | float | how close relative to 5yr history |
+| velocity_percentile | float | how fast relative to 5yr history |
+| size_percentile | float | how large relative to 5yr history |
+
+Key finding from EDA: `is_potentially_hazardous` and `is_sentry_object` measure completely different risk profiles and never overlap in 5 years of data. Hazardous objects are large and close. Sentry objects are tiny but on mathematically intersecting orbital trajectories.
 
 ---
 
@@ -111,16 +129,12 @@ import duckdb
 
 con = duckdb.connect()
 df = con.execute("""
-    SELECT name, miss_distance_lunar, velocity_km_per_s
-    FROM read_parquet('storage/silver/neo_*.parquet')
-    WHERE is_potentially_hazardous = true
-    ORDER BY miss_distance_lunar ASC
+    SELECT name, hazard_score, hazard_label, size_class,
+           miss_distance_lunar, velocity_km_per_s
+    FROM read_parquet('storage/gold/neo/neo_*.parquet')
+    WHERE hazard_label = 'critical'
+    ORDER BY hazard_score DESC
 """).df()
-```
-
-Run the example queries:
-```bash
-python query/duckdb_engine.py
 ```
 
 ---
@@ -128,8 +142,9 @@ python query/duckdb_engine.py
 ## Setup
 
 **1. Clone and create environment**
+
 ```bash
-git clone https://github.com/YOUR_USERNAME/nasa-data-lakehouse.git
+git clone https://github.com/cvhuynh1777/nasa-data-lakehouse.git
 cd nasa-data-lakehouse
 
 conda create -n nasa-lakehouse python=3.11 -y
@@ -142,21 +157,18 @@ pip install -r requirements.txt
 Free, instant: [api.nasa.gov](https://api.nasa.gov)
 
 **3. Add your key**
+
 ```bash
 cp .env.example .env
 # edit .env and paste your key
 ```
 
-**4. Run the pipeline**
+**4. Run the NEO pipeline**
+
 ```bash
-# pull raw data → bronze
-python ingestion/nasa_api.py
-
-# clean → silver
-python ingestion/transform.py
-
-# query with SQL
-python query/duckdb_engine.py
+python ingestion/neo/extract.py
+python ingestion/neo/transform.py
+python gold/neo/enrich.py
 ```
 
 ---
@@ -169,24 +181,7 @@ pandas
 pyarrow
 duckdb
 python-dotenv
+seaborn
+matplotlib
+jupyter
 ```
-
----
-
-## Roadmap
-
-- [x] NEO ingestion pipeline (bronze + silver)
-- [x] DuckDB SQL query layer
-- [ ] Gold enrichment layer (risk scoring, size classification)
-- [ ] APOD ingestion (text-rich data for RAG)
-- [ ] Embedding pipeline (sentence-transformers + Chroma)
-- [ ] RAG service
-- [ ] FastAPI REST layer (`/query`, `/search`, `/rag`, `/datasets`)
-- [ ] Containerize with Podman
-- [ ] Deploy to Red Hat OpenShift
-
----
-
-## Notes on naming
-
-Asteroid designations like `2004 HW` follow the Minor Planet Center convention — the year of discovery, a letter for the half-month, and a sequential letter. Numbered prefixes like `374038` are permanent catalog IDs assigned once the orbit is confirmed. Some get proper names (e.g. `136818 Selqet`).
