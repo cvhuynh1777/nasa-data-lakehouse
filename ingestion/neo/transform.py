@@ -89,11 +89,15 @@ def transform(df_bronze: pd.DataFrame) -> pd.DataFrame:
     df = unpack_raw(df_bronze)
     df = fix_types(df)
     df = add_derived_columns(df)
-    # deduplicate same asteroid same date different catalog IDs
-    df = df.sort_values("name")
-    df = df.drop_duplicates(subset=["date", "miss_distance_lunar", "velocity_km_per_s"], keep="first")
+    # deduplicate — round before comparing to catch floating point differences
+    df["_miss_distance_rounded"] = df["miss_distance_lunar"].round(4)
+    df["_velocity_rounded"] = df["velocity_km_per_s"].round(4)
+    df = df.drop_duplicates(
+        subset=["date", "_miss_distance_rounded", "_velocity_rounded"],
+        keep="first"
+    )
+    df = df.drop(columns=["_miss_distance_rounded", "_velocity_rounded"])
     return df
-
 
 def save_to_silver(df: pd.DataFrame, name: str) -> Path:
     """Save dataframe to silver layer."""
