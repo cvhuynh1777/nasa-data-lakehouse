@@ -2,6 +2,7 @@ from fastapi import FastAPI
 import duckdb
 from pathlib import Path
 from nl_query.service import ask
+from rag.service import ask as rag_ask
 
 app = FastAPI(
     title="NASA Data Lakehouse",
@@ -112,3 +113,8 @@ def sentry():
         ORDER BY miss_distance_lunar ASC
     """).df()
     return df.to_dict(orient="records")
+
+@app.get("/rag")
+def rag(question: str, n_results: int = 3):
+    """Ask a natural language question — retrieves relevant APOD entries and answers with Claude."""
+    return rag_ask(question, n_results)
