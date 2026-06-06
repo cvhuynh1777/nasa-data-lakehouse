@@ -285,28 +285,21 @@ python gold/apod/enrich.py
 python embeddings/pipeline.py
 ```
 
-**7. Run the API**
+**7. Start MinIO**
+
+```bash
+podman machine start
+podman start minio
+```
+
+**8. Sync to MinIO**
+
+```bash
+python storage/sync.py
+```
+
+**9. Run the API**
 
 ```bash
 python -m uvicorn api.main:app --reload
-```
-
----
-
-## Requirements
-
-```
-requests
-pandas
-pyarrow
-duckdb
-python-dotenv
-seaborn
-matplotlib
-jupyter
-fastapi
-uvicorn
-anthropic
-sentence-transformers
-chromadb
 ```

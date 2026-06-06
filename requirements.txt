@@ -12,3 +12,4 @@ anthropic
 sentence-transformers
 chromadb
 deltalake
+boto3
