@@ -17,12 +17,13 @@ Pulls live NASA data, cleans and enriches it through a medallion storage archite
 | Language | Python 3.11 | — |
 | Environment | conda | isolated dependencies |
 | Data format | Parquet | columnar, compressed, fast |
+| Versioning | Delta Lake | ACID transactions, time travel on gold layers |
 | Query engine | DuckDB | SQL directly on Parquet files, no server needed |
+| Object store | MinIO | S3-compatible, runs as container |
 | Vector DB | Chroma | local vector store for RAG embeddings |
 | Embeddings | sentence-transformers | converts text to vectors locally |
 | LLM | Claude (Anthropic) | NL query + RAG answer generation |
 | API | FastAPI | async, auto-docs, OpenShift-ready |
-| Object store | local folders → MinIO (coming) | S3-compatible, containerizable |
 | Containers | Podman | rootless, Red Hat native |
 
 ---
@@ -40,13 +41,15 @@ nasa-data-lakehouse/
 │       └── transform.py      # unpacks raw JSON, fixes types → silver
 ├── gold/
 │   ├── neo/
-│   │   └── enrich.py         # risk scoring, size classification → gold
+│   │   └── enrich.py         # risk scoring, size classification → gold + delta
 │   └── apod/
-│       └── enrich.py         # word count, rag_text, media flags → gold
+│       └── enrich.py         # word count, rag_text, media flags → gold + delta
 ├── embeddings/
 │   └── pipeline.py           # embeds APOD rag_text → Chroma vector store
 ├── rag/
 │   └── service.py            # semantic search + Claude answer generation
+├── nl_query/
+│   └── service.py            # text-to-SQL via Claude + DuckDB
 ├── storage/
 │   ├── bronze/neo/           # raw JSON exactly as received (gitignored)
 │   ├── bronze/apod/          # raw JSON exactly as received (gitignored)
@@ -54,12 +57,17 @@ nasa-data-lakehouse/
 │   ├── silver/apod/          # cleaned, typed (gitignored)
 │   ├── gold/neo/             # enriched asteroid data (gitignored)
 │   ├── gold/apod/            # enriched APOD data (gitignored)
-│   └── chroma/               # vector embeddings (gitignored)
+│   ├── delta/neo/            # Delta Lake versioned tables (gitignored)
+│   ├── delta/apod/           # Delta Lake versioned tables (gitignored)
+│   ├── chroma/               # vector embeddings (gitignored)
+│   └── sync.py               # syncs local storage to MinIO
 ├── query/
 │   └── duckdb_engine.py      # SQL queries directly on Parquet files
 ├── api/
 │   └── main.py               # FastAPI app
-├── docker/                   # coming: Dockerfile + docker-compose.yml
+├── docker/
+│   ├── Dockerfile            # API container
+│   └── docker-compose.yml    # API + MinIO + Chroma
 ├── notebooks/
 │   ├── neo/
 │   │   ├── 01_neo_discovery.ipynb   # API exploration, data structure
@@ -87,13 +95,15 @@ Gold    →  enriched with business logic, scoring, cross-dataset context
 - Silver is what most queries run against — clean and trustworthy
 - Gold is what the API and RAG service expose — ready for decisions
 
+Each gold layer is also written as a Delta Lake table, giving every pipeline run a versioned transaction with full time travel support.
+
 ---
 
 ## Datasets
 
 ### NEO — Near Earth Objects
 
-Pulls asteroid close-approach data from NASA's NeoWs API. 5 years of data (2021-2026), 10,133 close approaches.
+Pulls asteroid close-approach data from NASA's NeoWs API. 5 years of data (2021-2026), 9,959 close approaches.
 
 **Bronze** (`ingestion/neo/extract.py`) — raw storage:
 
@@ -169,7 +179,7 @@ Pulls NASA's daily astronomy image and explanation. 5 years of data (2021-2026),
 | year | int | extracted from date |
 | month | int | extracted from date |
 
-Entries with fewer than 50 words are filtered out before embedding (removes thin content like tweet links).
+Entries with fewer than 50 words are filtered out before embedding.
 
 ---
 
@@ -207,7 +217,7 @@ Answer: Based on the APOD entries, three interstellar objects have been
 
 ## Natural language query
 
-A separate text-to-SQL interface for the NEO structured dataset. Claude generates DuckDB SQL from natural language and queries the gold lakehouse directly.
+A text-to-SQL interface for the NEO structured dataset. Claude generates DuckDB SQL from natural language and queries the gold lakehouse directly.
 
 ```
 Q: "what asteroids came closest this week?"
@@ -219,10 +229,6 @@ Q: "what asteroids came closest this week?"
 ---
 
 ## API
-
-```bash
-python -m uvicorn api.main:app --reload
-```
 
 Interactive docs at `http://localhost:8000/docs`
 
@@ -260,46 +266,69 @@ Anthropic API key: [console.anthropic.com](https://console.anthropic.com)
 
 ```bash
 cp .env.example .env
-# edit .env and add NASA_API_KEY and ANTHROPIC_API_KEY
+# edit .env and add NASA_API_KEY, ANTHROPIC_API_KEY, and MinIO credentials
 ```
 
-**4. Run the NEO pipeline**
+**4. Run the pipelines**
 
 ```bash
 python ingestion/neo/extract.py
 python ingestion/neo/transform.py
 python gold/neo/enrich.py
-```
 
-**5. Run the APOD pipeline**
-
-```bash
 python ingestion/apod/extract.py
 python ingestion/apod/transform.py
 python gold/apod/enrich.py
 ```
 
-**6. Build embeddings**
+**5. Build embeddings**
 
 ```bash
 python embeddings/pipeline.py
 ```
 
-**7. Start MinIO**
+**6. Start the stack**
+
+Option A — containers (recommended):
+
+```bash
+podman machine start
+cd docker
+podman-compose up
+```
+
+Option B — local:
 
 ```bash
 podman machine start
 podman start minio
+python -m uvicorn api.main:app --reload
 ```
 
-**8. Sync to MinIO**
+**7. Sync to MinIO**
 
 ```bash
 python storage/sync.py
 ```
 
-**9. Run the API**
+---
 
-```bash
-python -m uvicorn api.main:app --reload
+## Requirements
+
+```
+requests
+pandas
+pyarrow
+duckdb
+python-dotenv
+seaborn
+matplotlib
+jupyter
+fastapi
+uvicorn
+anthropic
+sentence-transformers
+chromadb
+deltalake
+boto3
 ```
