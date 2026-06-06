@@ -1,16 +1,19 @@
 import pandas as pd
+import pyarrow as pa
 from pathlib import Path
 from datetime import datetime
+from deltalake.writer import write_deltalake
+from deltalake import DeltaTable
 
 SILVER_PATH = Path("storage/silver/apod")
-GOLD_PATH = Path("storage/gold/apod")
+GOLD_PATH   = Path("storage/gold/apod")
+DELTA_PATH  = Path("storage/delta/apod")
 
 
 def enrich(df: pd.DataFrame) -> pd.DataFrame:
     """Silver → gold enrichment for APOD."""
     df = df.copy()
 
-    # derived columns
     df['word_count'] = df['explanation'].str.split().str.len()
     df['has_image']  = df['media_type'] == 'image'
     df['year']       = df['date'].dt.year
@@ -22,7 +25,6 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
     # combine title + explanation for richer RAG embedding
     df['rag_text'] = df['title'] + '. ' + df['explanation']
 
-    # clean column order
     cols = [
         'hash_id', 'date', 'year', 'month',
         'title', 'explanation', 'rag_text',
@@ -32,12 +34,20 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
     return df[cols]
 
 
-def save_to_gold(df: pd.DataFrame, name: str) -> Path:
+def save_to_gold(df: pd.DataFrame) -> None:
+    """Save to both Parquet (for DuckDB) and Delta Lake (for versioning)."""
+    # plain parquet — DuckDB reads this
     GOLD_PATH.mkdir(parents=True, exist_ok=True)
-    filepath = GOLD_PATH / f"{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
+    filepath = GOLD_PATH / f"apod_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
     df.to_parquet(filepath, index=False)
-    print(f"  saved → {filepath}")
-    return filepath
+    print(f"  parquet → {filepath}")
+
+    # delta lake — versioned, ACID
+    DELTA_PATH.mkdir(parents=True, exist_ok=True)
+    arrow_table = pa.Table.from_pandas(df)
+    write_deltalake(str(DELTA_PATH), arrow_table, mode="overwrite")
+    dt = DeltaTable(str(DELTA_PATH))
+    print(f"  delta  → {DELTA_PATH} (version {dt.version()})")
 
 
 if __name__ == "__main__":
@@ -58,5 +68,5 @@ if __name__ == "__main__":
     print(f"\nMedia types:\n{df_gold['media_type'].value_counts()}")
     print(f"\nEntries per year:\n{df_gold['year'].value_counts().sort_index()}")
 
-    save_to_gold(df_gold, "apod")
+    save_to_gold(df_gold)
     print("\nDone!")

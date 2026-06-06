@@ -1,9 +1,13 @@
 import pandas as pd
+import pyarrow as pa
 from pathlib import Path
 from datetime import datetime
+from deltalake.writer import write_deltalake
+from deltalake import DeltaTable
 
 SILVER_PATH = Path("storage/silver/neo")
-GOLD_PATH = Path("storage/gold/neo")
+GOLD_PATH   = Path("storage/gold/neo")
+DELTA_PATH  = Path("storage/delta/neo")
 
 
 def classify_size(diameter_km: float) -> str:
@@ -63,12 +67,20 @@ def enrich(df: pd.DataFrame) -> pd.DataFrame:
     return df[cols]
 
 
-def save_to_gold(df: pd.DataFrame, name: str) -> Path:
+def save_to_gold(df: pd.DataFrame) -> None:
+    """Save to both Parquet (for DuckDB) and Delta Lake (for versioning)."""
+    # plain parquet — DuckDB reads this
     GOLD_PATH.mkdir(parents=True, exist_ok=True)
-    filepath = GOLD_PATH / f"{name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
+    filepath = GOLD_PATH / f"neo_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
     df.to_parquet(filepath, index=False)
-    print(f"  saved → {filepath}")
-    return filepath
+    print(f"  parquet → {filepath}")
+
+    # delta lake — versioned, ACID
+    DELTA_PATH.mkdir(parents=True, exist_ok=True)
+    arrow_table = pa.Table.from_pandas(df)
+    write_deltalake(str(DELTA_PATH), arrow_table, mode="overwrite")
+    dt = DeltaTable(str(DELTA_PATH))
+    print(f"  delta  → {DELTA_PATH} (version {dt.version()})")
 
 
 if __name__ == "__main__":
@@ -90,5 +102,5 @@ if __name__ == "__main__":
     print(f"\nSize classes:\n{df_gold['size_class'].value_counts()}")
     print(f"\nCritical alerts: {df_gold['critical_alert'].sum()}")
 
-    save_to_gold(df_gold, "neo")
+    save_to_gold(df_gold)
     print("\nDone!")
