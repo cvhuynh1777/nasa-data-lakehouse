@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nasa-api
+  namespace: christina-v-huynh1-dev
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nasa-api
+  template:
+    metadata:
+      labels:
+        app: nasa-api
+    spec:
+      containers:
+      - name: nasa-api
+        image: image-registry.openshift-image-registry.svc:5000/christina-v-huynh1-dev/nasa-api:latest
+        ports:
+        - containerPort: 8000
+        env:
+        - name: ANTHROPIC_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nasa-secrets
+              key: ANTHROPIC_API_KEY
+        - name: NASA_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: nasa-secrets
+              key: NASA_API_KEY
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"

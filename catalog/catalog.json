@@ -1,0 +1,126 @@
+{
+  "name": "NASA Data Lakehouse",
+  "version": "1.0",
+  "generated_at": "2026-06-06T15:35:43.623869",
+  "datasets": [
+    {
+      "name": "neo",
+      "description": "NASA Near Earth Object asteroid close approaches",
+      "source": "https://api.nasa.gov/neo/rest/v1/feed",
+      "coverage": "2021-2026",
+      "last_updated": "2026-06-06T15:35:43.646883",
+      "layers": {
+        "bronze": {
+          "path": "storage/bronze/neo/",
+          "description": "Raw JSON from NASA API",
+          "fields": [
+            "hash_id",
+            "id",
+            "name",
+            "date",
+            "raw"
+          ]
+        },
+        "silver": {
+          "path": "storage/silver/neo/",
+          "description": "Cleaned and typed fields",
+          "fields": [
+            "hash_id",
+            "id",
+            "name",
+            "date",
+            "absolute_magnitude_h",
+            "diameter_km_avg",
+            "is_potentially_hazardous",
+            "is_sentry_object",
+            "velocity_km_per_s",
+            "miss_distance_lunar",
+            "nasa_jpl_url"
+          ]
+        },
+        "gold": {
+          "path": "storage/gold/neo/",
+          "delta": "storage/delta/neo/",
+          "description": "Enriched with risk scoring and percentiles",
+          "fields": [
+            "hazard_score",
+            "hazard_label",
+            "size_class",
+            "is_named",
+            "critical_alert",
+            "miss_distance_percentile",
+            "velocity_percentile",
+            "size_percentile"
+          ]
+        }
+      },
+      "stats": {
+        "total_records": 9959,
+        "date_from": "2021-05-31 00:00:00",
+        "date_to": "2026-05-30 00:00:00",
+        "hazardous_count": 1047.0,
+        "sentry_count": 478.0,
+        "critical_alerts": 0.0,
+        "avg_hazard_score": 0.2636
+      },
+      "key_finding": "is_potentially_hazardous and is_sentry_object never overlap in 5 years of data"
+    },
+    {
+      "name": "apod",
+      "description": "NASA Astronomy Picture of the Day with explanations",
+      "source": "https://api.nasa.gov/planetary/apod",
+      "coverage": "2021-2026",
+      "last_updated": "2026-06-06T15:35:43.655022",
+      "layers": {
+        "bronze": {
+          "path": "storage/bronze/apod/",
+          "description": "Raw JSON from NASA API",
+          "fields": [
+            "hash_id",
+            "date",
+            "raw"
+          ]
+        },
+        "silver": {
+          "path": "storage/silver/apod/",
+          "description": "Cleaned and typed fields",
+          "fields": [
+            "hash_id",
+            "date",
+            "title",
+            "explanation",
+            "media_type",
+            "url",
+            "hdurl",
+            "copyright"
+          ]
+        },
+        "gold": {
+          "path": "storage/gold/apod/",
+          "delta": "storage/delta/apod/",
+          "description": "Enriched for RAG with rag_text and metadata",
+          "fields": [
+            "rag_text",
+            "word_count",
+            "has_image",
+            "year",
+            "month"
+          ]
+        }
+      },
+      "rag": {
+        "embedding_model": "all-MiniLM-L6-v2",
+        "vector_store": "Chroma",
+        "vector_path": "storage/chroma/",
+        "indexed_field": "rag_text"
+      },
+      "stats": {
+        "total_records": 1289,
+        "date_from": "2021-06-12 00:00:00",
+        "date_to": "2026-06-03 00:00:00",
+        "image_count": 1207.0,
+        "avg_word_count": 150.1
+      }
+    }
+  ]
+}

@@ -3,6 +3,7 @@ import duckdb
 from pathlib import Path
 from nl_query.service import ask
 from rag.service import ask as rag_ask
+import json
 
 app = FastAPI(
     title="NASA Data Lakehouse",
@@ -21,6 +22,14 @@ def nl_query(question: str):
     """Ask a natural language question — Claude generates SQL and queries the lakehouse."""
     return ask(question)
 
+@app.get("/catalog")
+def catalog():
+    """Data catalog — describes all datasets, schemas, and lineage."""
+    catalog_path = Path("catalog/catalog.json")
+    if not catalog_path.exists():
+        return {"error": "Catalog not found. Run catalog/catalog.py first."}
+    with open(catalog_path) as f:
+        return json.load(f)
 
 @app.get("/datasets")
 def datasets():

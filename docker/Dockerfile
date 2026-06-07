@@ -2,17 +2,16 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# increase pip timeout for large packages
 ENV PIP_DEFAULT_TIMEOUT=300
+ENV HF_HOME=/app/.cache/huggingface
+ENV SENTENCE_TRANSFORMERS_HOME=/app/.cache/sentence_transformers
+ENV TRANSFORMERS_CACHE=/app/.cache/transformers
 
-# install torch separately first with extended timeout
 RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
 
-# install remaining dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# copy source code
 COPY api/ ./api/
 COPY rag/ ./rag/
 COPY embeddings/ ./embeddings/
@@ -22,8 +21,16 @@ COPY query/ ./query/
 COPY nl_query/ ./nl_query/
 COPY storage/ ./storage/
 
-# non-root user for OpenShift compatibility
-RUN useradd -m appuser
+# create cache dirs and make them world-writable for OpenShift random UID
+# create cache dirs and make them world-writable for OpenShift random UID
+RUN mkdir -p /app/.cache/huggingface \
+             /app/.cache/sentence_transformers \
+             /app/.cache/transformers && \
+    chmod -R 777 /app/.cache && \
+    chmod -R 777 /app/storage/chroma && \
+    useradd -m appuser && \
+    chown -R appuser /app
+
 USER appuser
 
 EXPOSE 8000
