@@ -1,8 +1,11 @@
+import os
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from datetime import datetime, timedelta
 import subprocess
 import sys
+
+AIRFLOW_HOME = "/opt/airflow"
 
 default_args = {
     "owner": "nasa-lakehouse",
@@ -11,22 +14,58 @@ default_args = {
 }
 
 def run_extract():
-    subprocess.run([sys.executable, "ingestion/apod/extract.py"], check=True)
+    result = subprocess.run(
+        [sys.executable, "ingestion/apod/extract.py"],
+        cwd=AIRFLOW_HOME,
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.returncode != 0:
+        raise Exception(f"Extract failed: {result.stderr}")
 
 def run_transform():
-    subprocess.run([sys.executable, "ingestion/apod/transform.py"], check=True)
+    result = subprocess.run(
+        [sys.executable, "ingestion/apod/transform.py"],
+        cwd=AIRFLOW_HOME,
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.returncode != 0:
+        raise Exception(f"Transform failed: {result.stderr}")
 
 def run_enrich():
-    subprocess.run([sys.executable, "gold/apod/enrich.py"], check=True)
+    result = subprocess.run(
+        [sys.executable, "gold/apod/enrich.py"],
+        cwd=AIRFLOW_HOME,
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.returncode != 0:
+        raise Exception(f"Enrich failed: {result.stderr}")
 
 def run_sync():
-    subprocess.run([sys.executable, "storage/sync.py"], check=True)
+    result = subprocess.run(
+        [sys.executable, "storage/sync.py"],
+        cwd=AIRFLOW_HOME,
+        capture_output=True,
+        text=True
+    )
+    print(result.stdout)
+    print(result.stderr)
+    if result.returncode != 0:
+        raise Exception(f"Sync failed: {result.stderr}")
 
 with DAG(
     "apod_pipeline",
     default_args=default_args,
     description="APOD astronomy picture pipeline",
-    schedule_interval="0 7 * * *",  # daily at 7am
+    schedule_interval="0 7 * * *",
     start_date=datetime(2024, 1, 1),
     catchup=False,
 ) as dag:

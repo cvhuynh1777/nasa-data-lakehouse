@@ -43,7 +43,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  airflow:
+  airflow-webserver:
     image: apache/airflow:2.9.0
     depends_on:
       - postgres
@@ -54,10 +54,6 @@ services:
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
       AIRFLOW__CORE__LOAD_EXAMPLES: "false"
       AIRFLOW__WEBSERVER__SECRET_KEY: nasa-lakehouse-secret
-      _AIRFLOW_DB_MIGRATE: "true"
-      _AIRFLOW_WWW_USER_CREATE: "true"
-      _AIRFLOW_WWW_USER_USERNAME: admin
-      _AIRFLOW_WWW_USER_PASSWORD: admin
       _PIP_ADDITIONAL_REQUIREMENTS: "deltalake boto3 anthropic duckdb pandas pyarrow"
     volumes:
       - ../dags:/opt/airflow/dags
@@ -67,7 +63,28 @@ services:
       - ../catalog:/opt/airflow/catalog
     ports:
       - "8080:8080"
-    command: standalone
+    command: webserver
+
+  airflow-scheduler:
+    image: apache/airflow:2.9.0
+    depends_on:
+      - postgres
+      - airflow-webserver
+    env_file:
+      - ../.env
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: nasa-lakehouse-secret
+      _PIP_ADDITIONAL_REQUIREMENTS: "deltalake boto3 anthropic duckdb pandas pyarrow"
+    volumes:
+      - ../dags:/opt/airflow/dags
+      - ../storage:/opt/airflow/storage
+      - ../ingestion:/opt/airflow/ingestion
+      - ../gold:/opt/airflow/gold
+      - ../catalog:/opt/airflow/catalog
+    command: scheduler
 
 volumes:
   minio_data:

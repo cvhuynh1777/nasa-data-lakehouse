@@ -1,14 +1,14 @@
 {
   "name": "NASA Data Lakehouse",
   "version": "1.0",
-  "generated_at": "2026-06-06T15:35:43.623869",
+  "generated_at": "2026-06-07T02:02:14.077688",
   "datasets": [
     {
       "name": "neo",
       "description": "NASA Near Earth Object asteroid close approaches",
       "source": "https://api.nasa.gov/neo/rest/v1/feed",
       "coverage": "2021-2026",
-      "last_updated": "2026-06-06T15:35:43.646883",
+      "last_updated": "2026-06-07T02:02:14.090223",
       "layers": {
         "bronze": {
           "path": "storage/bronze/neo/",
@@ -55,13 +55,13 @@
         }
       },
       "stats": {
-        "total_records": 9959,
+        "total_records": 49779,
         "date_from": "2021-05-31 00:00:00",
-        "date_to": "2026-05-30 00:00:00",
-        "hazardous_count": 1047.0,
-        "sentry_count": 478.0,
+        "date_to": "2026-06-07 00:00:00",
+        "hazardous_count": 5231.0,
+        "sentry_count": 2382.0,
         "critical_alerts": 0.0,
-        "avg_hazard_score": 0.2636
+        "avg_hazard_score": 0.2638
       },
       "key_finding": "is_potentially_hazardous and is_sentry_object never overlap in 5 years of data"
     },
@@ -70,7 +70,7 @@
       "description": "NASA Astronomy Picture of the Day with explanations",
       "source": "https://api.nasa.gov/planetary/apod",
       "coverage": "2021-2026",
-      "last_updated": "2026-06-06T15:35:43.655022",
+      "last_updated": "2026-06-07T02:02:14.099167",
       "layers": {
         "bronze": {
           "path": "storage/bronze/apod/",
